@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 #include "image-lib.h"
 
 #define OUTPUT_DIR "./old_photo_PAR_A/"
@@ -19,8 +20,13 @@ typedef struct {
 } ThreadData;
 
 // Função que processa um subconjunto de imagens
+#include <time.h>
+
 void *process_images(void *arg) {
     ThreadData *data = (ThreadData *)arg;
+    
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time); // Tempo inicial da thread
 
     /* input images */
     gdImagePtr in_img;
@@ -70,6 +76,14 @@ void *process_images(void *arg) {
     }
 
     gdImageDestroy(in_texture_img); // Liberar textura
+
+    clock_gettime(CLOCK_MONOTONIC, &end_time); // Tempo final da thread
+
+    // Calcular tempo decorrido
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) +
+                          (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+    printf("Thread [%ld] finalizou em %.3f segundos.\n", pthread_self(), elapsed_time);
+
     pthread_exit(NULL);
 }
 
@@ -114,19 +128,36 @@ int main(int argc, char *argv[]) {
     if (strcmp(sort_option, "-name") == 0) {
         qsort(file_list, file_count, sizeof(char *), (int (*)(const void *, const void *))strcmp);
     }
-    // Adicionar ordenação por tamanho se necessário
+
+    // Adicionar ordenação por tamanho se necessário 
+
+    // MUDAR|!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    if (strcmp(sort_option, "-size") == 0) {
+        qsort(file_list, file_count, sizeof(char *), (int (*)(const void *, const void *))strcmp);
+    }
+
+
+    // Ordenar por tamanho? para igualar mais ou menos o tamanho das imagens e ter tamanhos iguais nas diferentes threads
+
 
     // Dividir trabalho entre threads
+    if(n_threads > file_count){
+        printf("Número de threads ajustado ao número de imagens total.\n");
+        n_threads = file_count;
+    }
+
     pthread_t threads[n_threads];
     ThreadData thread_data[n_threads];
     int images_per_thread = file_count / n_threads;
     int remaining_images = file_count % n_threads;
 
     for (int i = 0; i < n_threads; i++) {
+
         thread_data[i].files = file_list;
         thread_data[i].start = i * images_per_thread;
         thread_data[i].end = (i + 1) * images_per_thread;
         if (i == n_threads - 1) thread_data[i].end += remaining_images; // Ultima thread pega o resto
+
         thread_data[i].texture_file = "./paper-texture.png";
 
         pthread_create(&threads[i], NULL, process_images, &thread_data[i]);
